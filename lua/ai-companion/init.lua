@@ -8,7 +8,11 @@ M.setup = function(user_config)
 end
 
 if config.api_key == "" or config.api_key == nil then
-  inputs.api_key_input:mount()
+  if os.getenv("OPENAI_API_KEY") == "" or os.getenv("OPENAI_API_KEY") == nil then
+    inputs.api_key_input:mount()
+  else
+    config.api_key = os.getenv("OPENAI_API_KEY")
+  end
 end
 
 vim.api.nvim_create_user_command("Companion", function(opts)
@@ -23,7 +27,7 @@ end, {
   desc = "AI Companion commands.",
   complete = function()
     return { "chat", "review" }
-  end
+  end,
 })
 
 return M

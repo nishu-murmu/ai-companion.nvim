@@ -24,11 +24,11 @@ local api_key_input = Input({
   prompt = ">",
   default_value = "",
   on_submit = function(value)
-    if (vim.startswith(value, 'sk-proj')) then
+    if vim.startswith(value, "sk-proj") then
       config.api_key = value
       vim.notify("API added successfully", vim.log.levels.SUCCESS, {})
     else
-      vim.notify("Please enter valid API key", vim.log.levels.ERROR, { title = 'API config' })
+      vim.notify("Please enter valid API key", vim.log.levels.ERROR, { title = "API config" })
     end
   end,
 })
@@ -62,11 +62,14 @@ local user_prompt_popup = Popup({
   position = "50%",
   size = {
     width = 80,
-    height = 2
+    height = 2,
   },
   focusable = true,
   relative = "editor",
   border = {
+    padding = {
+      left = 1,
+    },
     style = "rounded",
     text = {
       top = "[ Enter your prompt ]",
@@ -81,7 +84,6 @@ local user_prompt_popup = Popup({
     winhighlight = "Normal:Normal,FloatBorder:FloatBorder",
   },
 })
-
 
 M.api_key_input = api_key_input
 M.gpt_prompt_popup = gpt_prompt_popup
