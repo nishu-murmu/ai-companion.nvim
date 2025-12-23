@@ -3,31 +3,83 @@ local M = {}
 local api = vim.api
 local prompts = require("ai-companion.prompts")
 local config = require("ai-companion.config")
-
-local function set_buffer_lines(lines)
+local state = require("ai-companion.state")
+local highlight = state.highlight
+local function replace_visual_selection(lines)
   if api.nvim_buf_is_valid(0) then
-    api.nvim_buf_set_lines(0, 0, -1, false, lines)
+    local start_row = vim.fn.line("'<") - 1
+    highlight.new_code.start_row = start_row
+    api.nvim_buf_set_lines(0, start_row, start_row, false, lines)
   end
 end
 
-function M.get_response(selected_text, input)
-  local instruction = input
-  local prompt_text = instruction .. "\n below is the selected code, \n```" .. selected_text .. "```"
+local function replace_visual_selection(lines)
+  if api.nvim_buf_is_valid(0) then
+    local start_row = vim.fn.line("'<") - 1
+    P(highlight)
+    highlight.new_code.start_row = start_row
+    api.nvim_buf_set_lines(0, start_row, start_row, false, lines)
+  end
+end
 
-  local cfg = config.config or {}
-  local api_key = cfg.api_key or os.getenv("OPENAI_API_KEY")
+local function get_visual_range()
+  local bufnr = 0
+  local start = vim.api.nvim_buf_get_mark(bufnr, "<")
+  local finish = vim.api.nvim_buf_get_mark(bufnr, ">")
+  local sr = start[1] - 1
+  local er = finish[1] - 1
+  return sr, er
+end
+
+local function highlight_visual_selection()
+  local bufnr = 0
+  local ns = api.nvim_create_namespace("OldCodeHighlight")
+  highlight.old_code.start_row, highlight.old_code.end_row = get_visual_range()
+  api.nvim_set_hl(0, state.highlight.old_code.hl_group, {
+    bg = "#ea4859",
+    blend = 80
+  })
+  api.nvim_buf_set_extmark(bufnr, ns, highlight.old_code.start_row, 0, {
+    end_row = highlight.old_code.end_row + 1,
+    hl_group = highlight.old_code.hl_group,
+    hl_eol = true,
+  })
+end
+
+local function highlight_new_inserted_text()
+  local bufnr = 0
+  local ns = api.nvim_create_namespace("NewCodeHighlight")
+  highlight.new_code.end_row = vim.api.nvim_buf_get_mark(bufnr, "<")[1]
+  local start_row = highlight.new_code.start_row
+  api.nvim_set_hl(0, state.highlight.new_code.hl_group, {
+    bg = "#199f5a",
+    blend = 80
+  })
+  api.nvim_buf_set_extmark(bufnr, ns, start_row, 0, {
+    end_row = highlight.new_code.end_row - 1,
+    hl_group = highlight.new_code.hl_group,
+    hl_eol = true,
+  })
+end
+
+function M.get_response(input)
+  local instruction = input
+  local selected_text = state.selected_text
+  local prompt_text = instruction .. "\n below is the selected code, \n```" .. selected_text .. "```"
+  local provider = config.provider or {}
+  local api_key = os.getenv("OPENAI_API_KEY")
   if not api_key or api_key == "" then
-    vim.notify("OPENAI API KEY is missing", vim.log.levels.ERROR)
-    vim.ui.input({ prompt = "Enter openai API key:" }, function(key)
+    vim.notify("The " .. provider.name .. "API key is missing", vim.log.levels.ERROR)
+    vim.ui.input({ prompt = "Enter " .. provider.name .. " API key:" }, function(key)
       if key and key ~= "" then
-        config.setup({ api_key = key })
-        M.get_response(selected_text, instruction)
+        vim.env.OPENAI_API_KEY = key
+        M.get_response(instruction)
       end
     end)
     return
   end
 
-  local model = cfg.model or "gpt-4.1-mini"
+  local model = provider.model or "gpt-4.1-mini"
 
   local payload = vim.json.encode({
     model = model,
@@ -59,13 +111,7 @@ function M.get_response(selected_text, input)
     text = true,
   }, function(res)
     local data = vim.json.decode(res.stdout)
-    local response_code = data
-        and data.output
-        and data.output[2]
-        and data.output[2].content
-        and data.output[2].content[1]
-        and data.output[2].content[1].text
-
+    local response_code = data.output[1].content[1].text
     if not response_code then
       vim.schedule(function()
         vim.notify("Failed to parse OpenAI response", vim.log.levels.ERROR)
@@ -74,8 +120,12 @@ function M.get_response(selected_text, input)
     end
 
     local lines = vim.split(response_code, "\n", { plain = true })
+    table.remove(lines, 1)
+    table.remove(lines, #lines)
     vim.schedule(function()
-      set_buffer_lines(lines)
+      replace_visual_selection(lines)
+      highlight_new_inserted_text()
+      highlight_visual_selection()
     end)
   end)
 end

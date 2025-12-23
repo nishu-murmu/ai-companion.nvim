@@ -1,13 +1,19 @@
 local M = {}
 
-M.config = {
+M.mappings = {
+  open_input = "<leader>e"
+}
+
+M.provider = {
+  name = "openai",
   model = "gpt-4.1-mini",
-  api_key = nil,
 }
 
 M.setup = function(opts)
-  M.config = vim.tbl_deep_extend("force", M.config, opts)
+  local provider = opts.provider or {}
+  local mappings = opts.mappings or {}
+  M.provider = vim.tbl_deep_extend("force", M.provider, provider)
+  M.mappings = vim.tbl_deep_extend("force", M.mappings, mappings)
 end
-
 
 return M

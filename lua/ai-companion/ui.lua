@@ -1,11 +1,10 @@
 local M = {}
 
 local api = vim.api
-local utils = require("ai-companion.utils")
+local config = require("ai-companion.config")
 
 local bufnr
 local win_id
-local selected_text = ""
 local input_overridden = false
 
 local function override_vim_input()
@@ -44,6 +43,7 @@ local function override_vim_input()
     vim.keymap.set("i", "<Esc>", function()
       api.nvim_win_close(win, true)
       on_confirm(nil)
+      vim.cmd("stopinsert")
     end, { buffer = buf })
 
     vim.cmd("startinsert")
@@ -56,13 +56,14 @@ function M.open_inline_command()
   end
 
   bufnr = api.nvim_create_buf(false, true)
-  api.nvim_buf_set_lines(bufnr, 0, -1, false, { "Quick Edit (Ctrl+K)" })
+  local open_input = config.mappings.open_input or ""
+  api.nvim_buf_set_lines(bufnr, 0, -1, false, { "Quick Edit (" .. open_input .. ")" })
 
   win_id = api.nvim_open_win(bufnr, false, {
     relative = "cursor",
     row = 1,
     col = 0,
-    width = 20,
+    width = 24,
     height = 1,
     style = "minimal",
   })
@@ -93,36 +94,8 @@ function M.close_inline_command()
   bufnr = nil
 end
 
-function M.get_selected_text()
-  return selected_text
-end
-
 function M.setup()
   override_vim_input()
-
-  api.nvim_create_autocmd("ModeChanged", {
-    pattern = "n:[vV\22]",
-    callback = function()
-      M.open_inline_command()
-    end,
-  })
-
-  api.nvim_create_autocmd("ModeChanged", {
-    pattern = "[vV\22]:n",
-    callback = function()
-      M.close_inline_command()
-      local lines = utils.get_visual_selection()
-      selected_text = table.concat(lines, "\n")
-    end,
-  })
-
-  api.nvim_create_autocmd("CursorMoved", {
-    callback = function()
-      if vim.fn.mode():match("[vV\22]") then
-        M.move_inline_command()
-      end
-    end,
-  })
 end
 
 return M
