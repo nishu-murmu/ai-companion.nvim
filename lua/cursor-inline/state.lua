@@ -28,5 +28,9 @@ local M = {
 	},
 	selected_text = "",
 	main_bufnr = nil,
+	request = {
+		id = 0,
+		active = false,
+	},
 }
 return M

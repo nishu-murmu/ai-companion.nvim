@@ -3,80 +3,134 @@ local M = {}
 local api = vim.api
 local utils = require("cursor-inline.utils")
 local state = require("cursor-inline.state")
+local config = require("cursor-inline.config")
 local highlight = state.highlight
 
 local function get_visual_range()
-  local bufnr = utils.get_bufnr()
-  local start_mark = api.nvim_buf_get_mark(bufnr, "<")
-  local end_mark = api.nvim_buf_get_mark(bufnr, ">")
-  return start_mark[1], end_mark[1]
+	local bufnr = utils.get_bufnr()
+	local start_mark = api.nvim_buf_get_mark(bufnr, "<")
+	local end_mark = api.nvim_buf_get_mark(bufnr, ">")
+	return start_mark[1], end_mark[1]
 end
 
 local function insert_generated_code(lines)
-  local bufnr = utils.get_bufnr()
-  if not api.nvim_buf_is_valid(bufnr) then
-    return
-  end
-  local start_row = api.nvim_buf_get_mark(bufnr, "<")[1]
-  api.nvim_buf_set_lines(bufnr, start_row - 1, start_row - 1, false, lines)
+	local bufnr = utils.get_bufnr()
+	if not api.nvim_buf_is_valid(bufnr) then
+		return
+	end
+	local start_row = api.nvim_buf_get_mark(bufnr, "<")[1]
+	api.nvim_buf_set_lines(bufnr, start_row - 1, start_row - 1, false, lines)
+end
+
+local function replace_generated_code(lines)
+	local bufnr = utils.get_bufnr()
+	if not api.nvim_buf_is_valid(bufnr) or not highlight.new_code.start_row then
+		return
+	end
+	local start_row = highlight.new_code.start_row - 1
+	local end_row = highlight.new_code.end_row or start_row
+	api.nvim_buf_set_lines(bufnr, start_row, end_row, false, lines)
+	highlight.new_code.end_row = highlight.new_code.start_row + #lines - 1
 end
 
 local function highlight_old_code()
-  local bufnr = utils.get_bufnr()
-  local ns = highlight.old_code.ns
-  api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
-  local sr, er = get_visual_range()
-  highlight.old_code.start_row = sr
-  highlight.old_code.end_row = er
-  api.nvim_set_hl(0, highlight.old_code.hl_group, { bg = "#ea4859", blend = 80 })
-  highlight.old_code.id = api.nvim_buf_set_extmark(bufnr, ns, highlight.old_code.start_row - 1, 0, {
-    end_row = highlight.old_code.end_row,
-    hl_group = highlight.old_code.hl_group,
-    hl_eol = true,
-  })
+	local bufnr = utils.get_bufnr()
+	local ns = highlight.old_code.ns
+	api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+	local sr, er = get_visual_range()
+	highlight.old_code.start_row = sr
+	highlight.old_code.end_row = er
+	local old_hl = config.preview.diff and { bg = "#ea4859", blend = 80, strikethrough = true }
+		or { bg = "#ea4859", blend = 80 }
+	api.nvim_set_hl(0, highlight.old_code.hl_group, old_hl)
+	highlight.old_code.id = api.nvim_buf_set_extmark(bufnr, ns, highlight.old_code.start_row - 1, 0, {
+		end_row = highlight.old_code.end_row,
+		hl_group = highlight.old_code.hl_group,
+		hl_eol = true,
+	})
 end
 
 local function highlight_inserted_code()
-  local bufnr = utils.get_bufnr()
-  local ns = highlight.new_code.ns
-  api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
-  api.nvim_set_hl(0, highlight.new_code.hl_group, { bg = "#199f5a", blend = 80 })
-  highlight.new_code.id = api.nvim_buf_set_extmark(bufnr, ns, highlight.new_code.start_row - 1, 0, {
-    end_row = highlight.new_code.end_row,
-    hl_group = highlight.new_code.hl_group,
-    hl_eol = true,
-  })
+	local bufnr = utils.get_bufnr()
+	local ns = highlight.new_code.ns
+	api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+	local new_hl = config.preview.diff and { bg = "#199f5a", blend = 80 } or { bg = "#199f5a", blend = 80 }
+	api.nvim_set_hl(0, highlight.new_code.hl_group, new_hl)
+	highlight.new_code.id = api.nvim_buf_set_extmark(bufnr, ns, highlight.new_code.start_row - 1, 0, {
+		end_row = highlight.new_code.end_row,
+		hl_group = highlight.new_code.hl_group,
+		hl_eol = true,
+	})
 end
 
 function M.reset_states()
-  local bufnr = state.main_bufnr
-  if not bufnr then
-    return
-  end
-  local new_ns = highlight.new_code.ns
-  local old_ns = highlight.old_code.ns
-  api.nvim_buf_clear_namespace(bufnr, new_ns, 0, -1)
-  api.nvim_buf_clear_namespace(bufnr, old_ns, 0, -1)
-  highlight.new_code.start_row, highlight.new_code.end_row, highlight.new_code.id = nil, nil, nil
-  highlight.old_code.start_row, highlight.old_code.end_row, highlight.old_code.id = nil, nil, nil
-  highlight.new_code.ns = api.nvim_create_namespace("NewCodeHighlight")
-  highlight.old_code.ns = api.nvim_create_namespace("OldCodeHighlight")
-  state.wins = {
-    deny = nil,
-    accept = nil,
-  }
-  state.bufs = {
-    deny = nil,
-    accept = nil,
-  }
+	local bufnr = state.main_bufnr
+	if not bufnr then
+		return
+	end
+	local new_ns = highlight.new_code.ns
+	local old_ns = highlight.old_code.ns
+	api.nvim_buf_clear_namespace(bufnr, new_ns, 0, -1)
+	api.nvim_buf_clear_namespace(bufnr, old_ns, 0, -1)
+	highlight.new_code.start_row, highlight.new_code.end_row, highlight.new_code.id = nil, nil, nil
+	highlight.old_code.start_row, highlight.old_code.end_row, highlight.old_code.id = nil, nil, nil
+	highlight.new_code.ns = api.nvim_create_namespace("NewCodeHighlight")
+	highlight.old_code.ns = api.nvim_create_namespace("OldCodeHighlight")
+	state.request.active = false
+	state.wins = {
+		deny = nil,
+		accept = nil,
+	}
+	state.bufs = {
+		deny = nil,
+		accept = nil,
+	}
+end
+
+function M.begin_response_preview()
+	local bufnr = utils.get_bufnr()
+	if not api.nvim_buf_is_valid(bufnr) then
+		return
+	end
+	local start_row = api.nvim_buf_get_mark(bufnr, "<")[1]
+	highlight.new_code.start_row = start_row
+	highlight.new_code.end_row = start_row
+	insert_generated_code({ "" })
+	highlight_old_code()
+	highlight_inserted_code()
+end
+
+function M.update_response_preview(response_code)
+	if not response_code then
+		return
+	end
+	local lines = vim.split(response_code, "\n", { plain = true })
+	if #lines == 0 then
+		lines = { "" }
+	end
+	vim.schedule(function()
+		replace_generated_code(lines)
+		highlight_inserted_code()
+	end)
+end
+
+function M.finish_response_preview(cb)
+	vim.schedule(function()
+		utils.open_helper_commands_ui()
+		vim.cmd("stopinsert")
+		if cb then
+			cb(true)
+		end
+	end)
 end
 
 ---@alias ProviderType "openai"|"anthropic"
 ---@param provider ProviderType
 function M.api_key_missing_notification(provider)
-  ---@diagnostic disable
-  vim.notify("The " .. provider .. " API key is missing", vim.log.levels.ERROR)
-  local formatted_message = string.format([[
+	---@diagnostic disable
+	vim.notify("The " .. provider .. " API key is missing", vim.log.levels.ERROR)
+	local formatted_message = string.format(
+		[[
 Please enter the API key securely:
 On Unix (Linux/macOS):
   1. Add this line in your shell config file:
@@ -94,28 +148,30 @@ On Windows (PowerShell):
   1. Run:
      [System.Environment]::SetEnvironmentVariable("%s", "<API_KEY>", "User")
   2. Restart PowerShell and Neovim.
-    ]], provider == "openai" and "OPENAI_API_KEY" or provider == "anthropic" and "ANTHROPIC_API_KEY" or "")
-  vim.notify(formatted_message)
+    ]],
+		provider == "openai" and "OPENAI_API_KEY" or provider == "anthropic" and "ANTHROPIC_API_KEY" or ""
+	)
+	vim.notify(formatted_message)
 end
 
 function M.on_response_handler(response_code, cb)
-  if not response_code then
-    vim.schedule(function()
-      vim.notify("Failed to parse OpenAI response", vim.log.levels.ERROR)
-      vim.cmd("stopinsert")
-      cb(true)
-    end)
-    return
-  end
-  local lines = vim.split(response_code, "\n", { plain = true })
-  vim.schedule(function()
-    insert_generated_code(lines)
-    highlight_old_code()
-    highlight_inserted_code()
-    utils.open_helper_commands_ui()
-    vim.cmd("stopinsert")
-    cb(true)
-  end)
+	if not response_code then
+		vim.schedule(function()
+			vim.notify("Failed to parse OpenAI response", vim.log.levels.ERROR)
+			vim.cmd("stopinsert")
+			cb(true)
+		end)
+		return
+	end
+	local lines = vim.split(response_code, "\n", { plain = true })
+	vim.schedule(function()
+		insert_generated_code(lines)
+		highlight_old_code()
+		highlight_inserted_code()
+		utils.open_helper_commands_ui()
+		vim.cmd("stopinsert")
+		cb(true)
+	end)
 end
 
 return M
